@@ -35,7 +35,7 @@ func run() error {
 	kong.Parse(&cli)
 
 	db, err := sqlx.ConnectContext(ctx, "pgx",
-		"postgresql://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable")
+		cli.DatabaseURL)
 	if err != nil {
 		return err
 	}
