@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 
 var cli = struct {
 	DatabaseURL string `name:"database-url" env:"DATABASE_URL" default:"postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"`
+	Port        int    `name:"port" env:"PORT" default:"8080"`
 }{}
 
 func main() {
@@ -50,7 +52,7 @@ func run() error {
 	a := api.New(br, sr)
 
 	serv := http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf(":%d", cli.Port),
 		Handler: a.Router(),
 	}
 
