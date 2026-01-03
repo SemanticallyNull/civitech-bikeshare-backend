@@ -1,9 +1,6 @@
 package api
 
 import (
-	"time"
-
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
@@ -24,18 +21,9 @@ func New(br *bike.Repository, sr *station.Repository) *API {
 		sr: sr,
 	}
 
-	a.r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"*"},
-		AllowHeaders:     []string{"*"},
-		ExposeHeaders:    []string{"*"},
-		AllowCredentials: true,
-		AllowOriginFunc: func(origin string) bool {
-			return true
-		},
-		MaxAge: 12 * time.Hour,
-	}))
-
+	a.r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 	a.r.GET("/bikes/nearby", a.bikesHandler)
 	a.r.GET("/bikes/:id", a.bikeHandler)
 	a.r.GET("/stations", func(c *gin.Context) {
