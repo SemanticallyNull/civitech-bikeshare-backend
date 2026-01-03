@@ -19,7 +19,7 @@ import (
 )
 
 var cli = struct {
-	DatabaseURL string `name:"DATABASE_URL" default:"postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"`
+	DatabaseURL string `name:"database-url" env:"DATABASE_URL" default:"postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"`
 }{}
 
 func main() {
