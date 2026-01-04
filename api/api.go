@@ -48,13 +48,13 @@ func (a *API) Router() *gin.Engine {
 }
 
 type stationResponse struct {
-	ID           uuid.UUID
-	Name         string
-	Address      string
-	OpeningHours string  `db:"opening_hours"`
-	Lat          float64 `json:"latitude"`
-	Lng          float64 `json:"longitude"`
-	Type         station.Type
+	ID           uuid.UUID    `json:"id"`
+	Name         string       `json:"name"`
+	Address      string       `json:"address"`
+	OpeningHours string       `json:"opening_hours"`
+	Lat          float64      `json:"latitude"`
+	Lng          float64      `json:"longitude"`
+	Type         station.Type `json:"type"`
 }
 
 func toStationResponse(station station.Station) stationResponse {
