@@ -21,3 +21,11 @@ func (r *Repository) GetStations() ([]Station, error) {
 }
 
 const getStations = `SELECT * FROM stations`
+
+func (r *Repository) GetStation(id string) (Station, error) {
+	var station Station
+	err := r.db.Get(&station, getStation, id)
+	return station, err
+}
+
+const getStation = `SELECT * FROM stations WHERE id = $1`
