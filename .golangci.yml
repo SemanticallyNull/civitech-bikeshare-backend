@@ -33,7 +33,6 @@ linters:
         main:
           deny:
             - pkg: github.com/davecgh/go-spew
-            - pkg: log
             - pkg: github.com/pkg/errors
               desc: use Go stdlib errors instead
             - pkg: github.com/cenkalti/backof[f]

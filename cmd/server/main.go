@@ -16,12 +16,19 @@ import (
 
 	"github.com/semanticallynull/bookingengine-backend/api"
 	"github.com/semanticallynull/bookingengine-backend/bike"
+	"github.com/semanticallynull/bookingengine-backend/internal/o11y"
 	"github.com/semanticallynull/bookingengine-backend/station"
 )
 
 var cli = struct {
-	DatabaseURL string `name:"database-url" env:"DATABASE_URL" default:"postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"`
+	DatabaseURL string `name:"database-url" env:"DATABASE_URL" default:"postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"` //nolint:lll
 	Port        int    `name:"port" env:"PORT" default:"8080"`
+
+	Auth0Domain string `name:"auth0-domain" env:"AUTH0_DOMAIN"`
+	Audience    string `name:"audience" env:"AUDIENCE"`
+
+	MetricsUsername string `name:"metrics-username" env:"METRICS_USERNAME"`
+	MetricsPassword string `name:"metrics-password" env:"METRICS_PASSWORD"`
 }{}
 
 func main() {
@@ -49,7 +56,13 @@ func run() error {
 	br := bike.NewRepository(db)
 	sr := station.NewRepository(db)
 
-	a := api.New(br, sr)
+	obs, cleanup, err := o11y.Setup(ctx)
+	defer cleanup()
+	if err != nil {
+		return err
+	}
+
+	a := api.New(br, sr, obs, cli.Auth0Domain, cli.Audience, cli.MetricsUsername, cli.MetricsPassword)
 
 	serv := http.Server{
 		Addr:    fmt.Sprintf(":%d", cli.Port),
