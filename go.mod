@@ -5,6 +5,7 @@ go 1.25.1
 require (
 	github.com/alecthomas/kong v1.13.0
 	github.com/auth0/go-jwt-middleware/v2 v2.3.1
+	github.com/davecgh/go-spew v1.1.1
 	github.com/gin-gonic/gin v1.11.0
 	github.com/goccy/go-json v0.10.5
 	github.com/google/uuid v1.6.0
@@ -12,6 +13,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/prometheus/client_golang v1.19.1
+	github.com/stripe/stripe-go/v84 v84.2.0
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0
 	go.opentelemetry.io/otel/sdk v1.39.0

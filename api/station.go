@@ -1,19 +1,13 @@
 package api
 
 import (
-	"fmt"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
-	"github.com/semanticallynull/bookingengine-backend/internal/middleware"
 	"github.com/semanticallynull/bookingengine-backend/station"
 )
 
 func (a *API) stationsHandler(c *gin.Context) {
-	userID, _ := middleware.GetUserID(c)
-	fmt.Println("UserID", userID)
-
 	stations, err := a.sr.GetStations()
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})

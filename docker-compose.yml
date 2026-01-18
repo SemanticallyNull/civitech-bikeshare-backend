@@ -1,9 +1,11 @@
 services:
   db:
-    image: postgres:13
+    image: postgres:18
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    volumes:
+      - psql-data:/var/lib/postgresql
     ports:
       - "5432:5432"
   adminer:
@@ -11,3 +13,7 @@ services:
     restart: always
     ports:
       - "8088:8080"
+
+volumes:
+  psql-data:
+    driver: local

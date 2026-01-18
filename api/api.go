@@ -1,10 +1,14 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/stripe/stripe-go/v84"
 
 	"github.com/semanticallynull/bookingengine-backend/bike"
+	"github.com/semanticallynull/bookingengine-backend/customer"
 	"github.com/semanticallynull/bookingengine-backend/internal/middleware"
 	"github.com/semanticallynull/bookingengine-backend/internal/o11y"
 	"github.com/semanticallynull/bookingengine-backend/station"
@@ -14,16 +18,25 @@ type API struct {
 	r  *gin.Engine
 	br *bike.Repository
 	sr *station.Repository
+	cr *customer.Repository
 
 	jwtValidator *middleware.JWTValidator
+	stripePK     string
+	stripeSK     string
 }
 
-func New(br *bike.Repository, sr *station.Repository, o *o11y.Observability, auth0Domain, audience, metricsUsername, metricsPassword string) *API {
+func New(br *bike.Repository, sr *station.Repository, cr *customer.Repository, o *o11y.Observability, auth0Domain,
+	audience, metricsUsername, metricsPassword, stripePK, stripeSK string) *API {
 	a := &API{
-		r:  gin.New(),
-		br: br,
-		sr: sr,
+		r:        gin.New(),
+		br:       br,
+		sr:       sr,
+		cr:       cr,
+		stripePK: stripePK,
+		stripeSK: stripeSK,
 	}
+
+	stripe.Key = stripeSK
 
 	// Global middleware (apply to all routes)
 	a.r.Use(gin.Recovery())
@@ -46,8 +59,15 @@ func New(br *bike.Repository, sr *station.Repository, o *o11y.Observability, aut
 	{
 		protected.GET("/bikes/nearby", a.bikesHandler)
 		protected.GET("/bikes/:id", a.bikeHandler)
+		protected.GET("/bikes/:id/unlock", a.bikeUnlockHandler)
 		protected.GET("/stations", a.stationsHandler)
 		protected.GET("/stations/:id", a.stationHandler)
+		protected.GET("/stripe/pubkey", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"publishableKey": stripePK})
+		})
+		protected.POST("/customer/session", a.createCustomerSession)
+		protected.POST("/customer/setupintent", a.createSetupIntent)
+		protected.GET("/customer/preride", a.preRide)
 	}
 
 	return a

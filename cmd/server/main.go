@@ -16,6 +16,7 @@ import (
 
 	"github.com/semanticallynull/bookingengine-backend/api"
 	"github.com/semanticallynull/bookingengine-backend/bike"
+	"github.com/semanticallynull/bookingengine-backend/customer"
 	"github.com/semanticallynull/bookingengine-backend/internal/o11y"
 	"github.com/semanticallynull/bookingengine-backend/station"
 )
@@ -29,6 +30,9 @@ var cli = struct {
 
 	MetricsUsername string `name:"metrics-username" env:"METRICS_USERNAME"`
 	MetricsPassword string `name:"metrics-password" env:"METRICS_PASSWORD"`
+
+	StripePK string `name:"stripe-pk" env:"STRIPE_PK"`
+	StripeSK string `name:"stripe-sk" env:"STRIPE_SK"`
 }{}
 
 func main() {
@@ -55,6 +59,7 @@ func run() error {
 
 	br := bike.NewRepository(db)
 	sr := station.NewRepository(db)
+	cr := customer.NewRepository(db)
 
 	obs, cleanup, err := o11y.Setup(ctx)
 	defer cleanup()
@@ -62,7 +67,8 @@ func run() error {
 		return err
 	}
 
-	a := api.New(br, sr, obs, cli.Auth0Domain, cli.Audience, cli.MetricsUsername, cli.MetricsPassword)
+	a := api.New(br, sr, cr, obs, cli.Auth0Domain, cli.Audience, cli.MetricsUsername, cli.MetricsPassword, cli.StripePK,
+		cli.StripeSK)
 
 	serv := http.Server{
 		Addr:    fmt.Sprintf(":%d", cli.Port),
