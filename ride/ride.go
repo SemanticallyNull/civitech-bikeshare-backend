@@ -8,11 +8,11 @@ import (
 )
 
 type Ride struct {
-	ID              uuid.UUID
-	BikeID          uuid.UUID
-	CustomerID      uuid.UUID
-	StartedAt       time.Time
-	EndedAt         sql.NullTime
-	ChargeCreatedAt sql.NullTime
+	ID              uuid.UUID     `db:"id"`
+	BikeID          uuid.UUID     `db:"bike_id"`
+	CustomerID      uuid.UUID     `db:"customer_id"`
+	StartedAt       time.Time     `db:"started_at"`
+	EndedAt         sql.NullTime  `db:"ended_at"`
+	ChargeCreatedAt sql.NullTime  `db:"charge_created_at"`
+	LockUserID      sql.NullInt64 `db:"lock_user_id"`
 }
-

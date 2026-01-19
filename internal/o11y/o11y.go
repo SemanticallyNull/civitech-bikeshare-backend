@@ -24,11 +24,14 @@ func Setup(ctx context.Context) (*Observability, func(), error) {
 	}))
 
 	// Initialize OpenTelemetry (with sampling)
-	exporter, _ := otlptracehttp.New(ctx)
+	exporter, _ := otlptracehttp.New(ctx,
+		otlptracehttp.WithInsecure(),
+		otlptracehttp.WithEndpoint("localhost:4318"),
+	)
 	tp := trace.NewTracerProvider(
 		trace.WithBatcher(exporter),
 		trace.WithSampler(trace.ParentBased(
-			trace.TraceIDRatioBased(0.01), // 1% sampling
+			trace.TraceIDRatioBased(1), // 1% sampling
 		)),
 	)
 	otel.SetTracerProvider(tp)

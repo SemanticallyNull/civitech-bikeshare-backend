@@ -11,6 +11,7 @@ import (
 	"github.com/semanticallynull/bookingengine-backend/customer"
 	"github.com/semanticallynull/bookingengine-backend/internal/middleware"
 	"github.com/semanticallynull/bookingengine-backend/internal/o11y"
+	"github.com/semanticallynull/bookingengine-backend/ride"
 	"github.com/semanticallynull/bookingengine-backend/station"
 )
 
@@ -19,19 +20,22 @@ type API struct {
 	br *bike.Repository
 	sr *station.Repository
 	cr *customer.Repository
+	rr *ride.Repository
 
 	jwtValidator *middleware.JWTValidator
 	stripePK     string
 	stripeSK     string
 }
 
-func New(br *bike.Repository, sr *station.Repository, cr *customer.Repository, o *o11y.Observability, auth0Domain,
-	audience, metricsUsername, metricsPassword, stripePK, stripeSK string) *API {
+func New(br *bike.Repository, sr *station.Repository, cr *customer.Repository, rr *ride.Repository,
+	o *o11y.Observability, auth0Domain, audience, metricsUsername, metricsPassword, stripePK, stripeSK string) *API {
+
 	a := &API{
 		r:        gin.New(),
 		br:       br,
 		sr:       sr,
 		cr:       cr,
+		rr:       rr,
 		stripePK: stripePK,
 		stripeSK: stripeSK,
 	}
@@ -67,7 +71,11 @@ func New(br *bike.Repository, sr *station.Repository, cr *customer.Repository, o
 		})
 		protected.POST("/customer/session", a.createCustomerSession)
 		protected.POST("/customer/setupintent", a.createSetupIntent)
+		protected.POST("/customer/paymentmethod", a.setPaymentMethod)
 		protected.GET("/customer/preride", a.preRide)
+		protected.POST("/ride/start", a.startRideHandler)
+		protected.POST("/ride/end", a.endRideHandler)
+		protected.GET("/ride/current", a.currentRideHandler)
 	}
 
 	return a

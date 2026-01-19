@@ -35,6 +35,7 @@ func (a *API) createCustomerSession(c *gin.Context) {
 	}
 
 	if !cust.StripeID.Valid {
+
 		stripeCustomer, err := stripecustomer.New(&stripe.CustomerParams{
 			Metadata: map[string]string{
 				"auth0_id": userID,
@@ -144,4 +145,48 @@ func (a *API) preRide(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusPreconditionFailed, gin.H{"state": "require payment method"})
+}
+
+type paymentMethodRequest struct {
+	PaymentMethod string `json:"paymentMethodId"`
+}
+
+func (a *API) setPaymentMethod(c *gin.Context) {
+	logger := middleware.GetLogger(c)
+
+	userID, _ := middleware.GetUserID(c)
+	cust, err := a.cr.GetCustomerByAuth0ID(userID)
+	if err != nil {
+		logger.Error("Cannot get customer", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var req paymentMethodRequest
+	err = c.Bind(&req)
+	if err != nil {
+		logger.Error("Failed to bind request", "error", err)
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.PaymentMethod == "" {
+		logger.Error("Payment method ID is required", "error", err)
+		c.JSON(400, gin.H{"error": "payment method ID is required"})
+		return
+	}
+
+	cuParams := stripe.CustomerParams{
+		InvoiceSettings: &stripe.CustomerInvoiceSettingsParams{
+			DefaultPaymentMethod: stripe.String(req.PaymentMethod),
+		},
+	}
+	_, err = stripecustomer.Update(cust.StripeID.String, &cuParams)
+	if err != nil {
+		logger.Error("Failed to set payment method", "error", err)
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(200, gin.H{})
 }

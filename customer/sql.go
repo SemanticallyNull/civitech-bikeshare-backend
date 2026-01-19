@@ -3,6 +3,7 @@ package customer
 import (
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -48,3 +49,25 @@ func (r *Repository) AddStripeIDToCustomer(auth0ID, stripeID string) error {
 }
 
 const addStripeIDToCustomerQuery = "UPDATE customers SET stripe_id = $1 WHERE auth0_id = $2"
+
+var ErrNoRideInProgress = errors.New("no rides in progress")
+
+type CurrentRideResult struct {
+	BikeID    string    `db:"label"`
+	StartedAt time.Time `db:"started_at"`
+}
+
+func (r *Repository) CurrentRide(customerID uuid.UUID) (CurrentRideResult, error) {
+	var result CurrentRideResult
+	err := r.db.Get(&result, getCurrentRideQuery, customerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return CurrentRideResult{}, ErrNoRideInProgress
+		}
+		return CurrentRideResult{}, err
+	}
+	return result, err
+}
+
+const getCurrentRideQuery = `SELECT b.label, r.started_at FROM rides r JOIN bikes b ON bike_id = b.id WHERE r.customer_id = $1
+                                                             AND r.ended_at IS NULL`
