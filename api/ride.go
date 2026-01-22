@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -170,9 +171,18 @@ func (a *API) currentRideHandler(c *gin.Context) {
 	userID, _ := middleware.GetUserID(c)
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
-		logger.Error("Failed to get customer", "error", err)
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
+		if errors.Is(err, customer.ErrNotFound) {
+			cust, err = a.cr.CreateCustomer(userID)
+			if err != nil {
+				logger.Error("Failed to save customer", "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		} else {
+			logger.Error("Failed to get customer", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	ride, err := a.cr.CurrentRide(cust.ID)

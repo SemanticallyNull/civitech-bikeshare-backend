@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware/v2"
@@ -74,7 +75,8 @@ func (a *JWTValidator) EnsureValidToken() gin.HandlerFunc {
 	)
 
 	return func(c *gin.Context) {
-		c.GetHeader("Authorization")
+		accessToken, _ := strings.CutPrefix(c.GetHeader("Authorization"), "Bearer ")
+		c.Set("access_token", accessToken)
 		adapter.Wrap(middleware.CheckJWT)(c)
 	}
 }

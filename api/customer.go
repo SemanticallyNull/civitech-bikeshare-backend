@@ -21,7 +21,7 @@ func (a *API) createCustomerSession(c *gin.Context) {
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		if errors.Is(err, customer.ErrNotFound) {
-			err = a.cr.CreateCustomer(userID)
+			cust, err = a.cr.CreateCustomer(userID)
 			if err != nil {
 				logger.Error("Failed to save customer", "error", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -118,14 +118,18 @@ func (a *API) preRide(c *gin.Context) {
 	userID, _ := middleware.GetUserID(c)
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
-		logger.Error("Cannot get customer", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		if errors.Is(err, customer.ErrNotFound) {
+			cust, err = a.cr.CreateCustomer(userID)
+		} else {
+			logger.Error("Cannot get customer", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	if !cust.StripeID.Valid {
 		logger.Error("Failed to retrieve payment method", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "no stripe ID"})
+		c.JSON(http.StatusPreconditionFailed, gin.H{"state": "require payment method"})
 		return
 	}
 

@@ -36,12 +36,13 @@ func (r *Repository) GetCustomerByAuth0ID(auth0ID string) (*Customer, error) {
 
 const getCustomerByAuth0IDQuery = "SELECT * FROM customers WHERE auth0_id = $1"
 
-func (r *Repository) CreateCustomer(auth0ID string) error {
-	_, err := r.db.Exec(createCustomerQuery, uuid.New(), auth0ID)
-	return err
+func (r *Repository) CreateCustomer(auth0ID string) (*Customer, error) {
+	var customer Customer
+	err := r.db.Get(&customer, createCustomerQuery, uuid.New(), auth0ID)
+	return &customer, err
 }
 
-const createCustomerQuery = "INSERT INTO customers (id, auth0_id) VALUES ($1, $2)"
+const createCustomerQuery = "INSERT INTO customers (id, auth0_id) VALUES ($1, $2) RETURNING *"
 
 func (r *Repository) AddStripeIDToCustomer(auth0ID, stripeID string) error {
 	_, err := r.db.Exec(addStripeIDToCustomerQuery, stripeID, auth0ID)
