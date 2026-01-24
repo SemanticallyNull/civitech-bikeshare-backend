@@ -1,0 +1,2 @@
+ALTER TABLE bikes DROP COLUMN IF EXISTS image_url;
+ALTER TABLE bikes DROP COLUMN IF EXISTS display_name;

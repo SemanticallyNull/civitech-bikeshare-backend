@@ -1,0 +1,429 @@
+openapi: 3.0.3
+info:
+  title: Bikeshare Bookings API
+  description: API endpoints for bike booking management in the Civitech Bikeshare application
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /availability:
+    get:
+      summary: Get bike availability
+      description: |
+        Returns availability information for all bikes, including their existing bookings.
+        This endpoint is public and does not require authentication.
+        Cancelled bookings are excluded from the results.
+      operationId: getAvailability
+      tags:
+        - Availability
+      parameters:
+        - name: stationId
+          in: query
+          description: Filter bikes by station ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          description: Start of date range to check (ISO 8601)
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: End of date range to check (ISO 8601)
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: List of bikes with their availability
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BikeAvailability'
+        '400':
+          description: Invalid request parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bookings:
+    get:
+      summary: Get user bookings
+      description: |
+        Returns all bookings for the authenticated user, sorted by startTime ascending.
+        Optionally filter by booking status.
+      operationId: getBookings
+      tags:
+        - Bookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter by booking status
+          required: false
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+      responses:
+        '200':
+          description: List of user bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new booking
+      description: |
+        Creates a new bike booking for the authenticated user.
+
+        Business rules:
+        - Duration must be between 1 hour and 24 hours
+        - Cannot overlap with existing non-cancelled bookings for the same bike
+        - Bike must exist
+      operationId: createBooking
+      tags:
+        - Bookings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Booking created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: Invalid request or duration out of range
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidDuration:
+                  summary: Duration validation failed
+                  value:
+                    code: INVALID_DURATION
+                    message: Booking duration must be at least 1 hour
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Bike not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: BIKE_NOT_FOUND
+                message: Bike not found
+        '409':
+          description: Booking conflicts with existing booking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: BOOKING_OVERLAP
+                message: Booking overlaps with existing booking
+
+  /bookings/current:
+    get:
+      summary: Get current active booking
+      description: |
+        Returns the user's currently active booking, if any.
+        A booking is considered "active" if the current time is between startTime and endTime
+        and the booking has not been cancelled.
+      operationId: getCurrentBooking
+      tags:
+        - Bookings
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current active booking or null if none exists
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/Booking'
+                  - type: 'null'
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bookings/{bookingId}/cancel:
+    post:
+      summary: Cancel a booking
+      description: |
+        Cancels an existing booking by setting its cancelled_at timestamp.
+
+        Business rules:
+        - Only the booking owner can cancel
+        - Only bookings with status "confirmed" (future bookings) can be cancelled
+        - Active or completed bookings cannot be cancelled
+      operationId: cancelBooking
+      tags:
+        - Bookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          description: The booking ID to cancel
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Booking cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: Booking cannot be cancelled (already started or completed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: CANNOT_CANCEL
+                message: Cannot cancel booking that has already started
+        '401':
+          description: Unauthorized - authentication required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: User does not own this booking
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_AUTHORIZED
+                message: Not authorized to cancel this booking
+        '404':
+          description: Booking not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: BOOKING_NOT_FOUND
+                message: Booking not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Auth0 JWT token
+
+  schemas:
+    BookingStatus:
+      type: string
+      enum:
+        - confirmed
+        - active
+        - completed
+        - cancelled
+      description: |
+        The lifecycle status of a booking. Status is derived from booking data:
+        - `confirmed`: Future booking (startTime > now, not cancelled)
+        - `active`: Currently in progress (startTime <= now <= endTime, not cancelled)
+        - `completed`: Past booking (endTime < now, not cancelled)
+        - `cancelled`: Booking was cancelled (cancelled_at is set)
+
+    BikeAvailability:
+      type: object
+      required:
+        - bikeId
+        - bikeName
+        - bookings
+      properties:
+        bikeId:
+          type: string
+          format: uuid
+          description: Unique identifier for the bike
+        bikeName:
+          type: string
+          description: Display name/label of the bike
+          example: CARGO-001
+        bikeImage:
+          type: string
+          format: uri
+          nullable: true
+          description: URL to the bike image
+        stationId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the station where bike is located
+        stationName:
+          type: string
+          description: Name of the station where bike is located
+          example: TBH Dun Laoghaire
+        bookings:
+          type: array
+          description: Existing non-cancelled bookings for this bike
+          items:
+            $ref: '#/components/schemas/BookingTimeSlot'
+
+    BookingTimeSlot:
+      type: object
+      required:
+        - startTime
+        - endTime
+      properties:
+        startTime:
+          type: string
+          format: date-time
+          description: Booking start time (ISO 8601)
+        endTime:
+          type: string
+          format: date-time
+          description: Booking end time (ISO 8601)
+
+    Booking:
+      type: object
+      required:
+        - id
+        - bikeId
+        - bikeName
+        - userId
+        - startTime
+        - endTime
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the booking
+        bikeId:
+          type: string
+          format: uuid
+          description: ID of the booked bike
+        bikeName:
+          type: string
+          description: Display name of the booked bike
+          example: CARGO-001
+        userId:
+          type: string
+          description: Auth0 subject ID of the user who made the booking
+        stationId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the station where bike is located
+        stationName:
+          type: string
+          description: Name of the station where bike is located
+          example: TBH Dun Laoghaire
+        startTime:
+          type: string
+          format: date-time
+          description: Booking start time (ISO 8601)
+        endTime:
+          type: string
+          format: date-time
+          description: Booking end time (ISO 8601)
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        createdAt:
+          type: string
+          format: date-time
+          description: When the booking was created (ISO 8601)
+        totalCost:
+          type: integer
+          nullable: true
+          description: Total cost in cents (populated when booking completes)
+          example: 1500
+
+    CreateBookingRequest:
+      type: object
+      required:
+        - bikeId
+        - startTime
+        - endTime
+      properties:
+        bikeId:
+          type: string
+          format: uuid
+          description: ID of the bike to book
+        startTime:
+          type: string
+          format: date-time
+          description: Booking start time (ISO 8601)
+          example: "2026-01-25T10:00:00Z"
+        endTime:
+          type: string
+          format: date-time
+          description: Booking end time (ISO 8601, must be 1-24 hours after startTime)
+          example: "2026-01-25T12:00:00Z"
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - INVALID_REQUEST
+            - INVALID_DATE
+            - INVALID_DURATION
+            - BOOKING_OVERLAP
+            - BIKE_NOT_FOUND
+            - BOOKING_NOT_FOUND
+            - CANNOT_CANCEL
+            - NOT_AUTHORIZED
+            - UNAUTHORIZED
+        message:
+          type: string
+          description: Human-readable error message
+          example: Booking duration must be at least 1 hour
+
+tags:
+  - name: Availability
+    description: Bike availability endpoints (public)
+  - name: Bookings
+    description: Booking management endpoints (authenticated)

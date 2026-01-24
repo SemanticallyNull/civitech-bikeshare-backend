@@ -18,6 +18,21 @@ func (a *API) createCustomerSession(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
 	userID, _ := middleware.GetUserID(c)
+
+	// Fetch user profile from Auth0 (best effort)
+	var email, name string
+	if accessToken, ok := c.Get("access_token"); ok {
+		if token, ok := accessToken.(string); ok && token != "" {
+			userInfo, err := a.auth0Client.GetUserInfo(c, token)
+			if err != nil {
+				logger.WarnContext(c, "failed to fetch user info from Auth0", "error", err)
+			} else {
+				email = userInfo.Email
+				name = userInfo.Name
+			}
+		}
+	}
+
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		if errors.Is(err, customer.ErrNotFound) {
@@ -31,6 +46,24 @@ func (a *API) createCustomerSession(c *gin.Context) {
 			logger.Error("Failed to save stripe to customer", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
+		}
+	}
+
+	// Update profile if we have new data and it differs from stored values
+	if email != "" || name != "" {
+		currentEmail := ""
+		currentName := ""
+		if cust.Email.Valid {
+			currentEmail = cust.Email.String
+		}
+		if cust.Name.Valid {
+			currentName = cust.Name.String
+		}
+
+		if email != currentEmail || name != currentName {
+			if err := a.cr.UpdateProfile(c, userID, email, name); err != nil {
+				logger.WarnContext(c, "failed to update customer profile", "error", err)
+			}
 		}
 	}
 
@@ -193,4 +226,58 @@ func (a *API) setPaymentMethod(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{})
+}
+
+type profileRequest struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+type profileResponse struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+func (a *API) getProfile(c *gin.Context) {
+	logger := middleware.GetLogger(c)
+
+	userID, _ := middleware.GetUserID(c)
+	cust, err := a.cr.GetCustomerByAuth0ID(userID)
+	if err != nil {
+		if errors.Is(err, customer.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "customer not found"})
+			return
+		}
+		logger.ErrorContext(c, "failed to get customer", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get profile"})
+		return
+	}
+
+	c.JSON(http.StatusOK, profileResponse{
+		Email: cust.Email.String,
+		Name:  cust.Name.String,
+	})
+}
+
+func (a *API) updateProfile(c *gin.Context) {
+	logger := middleware.GetLogger(c)
+
+	userID, _ := middleware.GetUserID(c)
+
+	var req profileRequest
+	if err := c.Bind(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := a.cr.UpdateProfile(c, userID, req.Email, req.Name); err != nil {
+		logger.ErrorContext(c, "failed to update customer profile", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update profile"})
+		return
+	}
+
+	c.JSON(http.StatusOK, profileResponse{
+		Email: req.Email,
+		Name:  req.Name,
+	})
 }

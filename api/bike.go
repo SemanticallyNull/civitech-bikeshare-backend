@@ -74,7 +74,7 @@ type bikeResponse struct {
 	IMEI           string    `json:"bleId"`
 	Lat            float64   `json:"latitude"`
 	Lng            float64   `json:"longitude"`
-	BatteryVoltage int       `json:"battery_voltage"`
+	BatteryVoltage int       `json:"batteryVoltage"`
 	Available      bool      `json:"available"`
 }
 

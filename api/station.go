@@ -37,7 +37,7 @@ type stationResponse struct {
 	ID           uuid.UUID    `json:"id"`
 	Name         string       `json:"name"`
 	Address      string       `json:"address"`
-	OpeningHours string       `json:"opening_hours"`
+	OpeningHours string       `json:"openingHours"`
 	Lat          float64      `json:"latitude"`
 	Lng          float64      `json:"longitude"`
 	Type         station.Type `json:"type"`

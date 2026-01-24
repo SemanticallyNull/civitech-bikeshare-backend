@@ -17,7 +17,7 @@ import (
 )
 
 type rideRequest struct {
-	BikeID string `json:"bike_id"`
+	BikeID string `json:"bikeId"`
 }
 
 func (a *API) startRideHandler(c *gin.Context) {
@@ -157,9 +157,9 @@ func (a *API) endRideHandler(c *gin.Context) {
 }
 
 type RideState struct {
-	InProgress bool      `json:"in_progress"`
-	BikeID     string    `json:"bike_id"`
-	StartedAt  time.Time `json:"started_at"`
+	InProgress bool      `json:"inProgress"`
+	BikeID     string    `json:"bikeId"`
+	StartedAt  time.Time `json:"startedAt"`
 }
 
 func (a *API) currentRideHandler(c *gin.Context) {

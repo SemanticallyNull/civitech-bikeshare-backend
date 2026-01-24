@@ -21,4 +21,11 @@ type Bike struct {
 	BatteryVoltage int
 
 	Available bool
+
+	StationID *uuid.UUID `db:"station_id"`
+
+	// DisplayName is a user-friendly name for the bike type (e.g., "Bergamont Cargoville LJ")
+	DisplayName *string `db:"display_name"`
+	// ImageURL is a URL to an image of the bike
+	ImageURL *string `db:"image_url"`
 }

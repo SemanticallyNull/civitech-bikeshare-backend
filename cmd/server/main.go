@@ -16,7 +16,9 @@ import (
 
 	"github.com/semanticallynull/bookingengine-backend/api"
 	"github.com/semanticallynull/bookingengine-backend/bike"
+	"github.com/semanticallynull/bookingengine-backend/booking"
 	"github.com/semanticallynull/bookingengine-backend/customer"
+	"github.com/semanticallynull/bookingengine-backend/internal/auth0"
 	"github.com/semanticallynull/bookingengine-backend/internal/o11y"
 	"github.com/semanticallynull/bookingengine-backend/ride"
 	"github.com/semanticallynull/bookingengine-backend/station"
@@ -62,6 +64,7 @@ func run() error {
 	sr := station.NewRepository(db)
 	cr := customer.NewRepository(db)
 	rr := ride.NewRepository(db)
+	bkr := booking.NewRepository(db)
 
 	obs, cleanup, err := o11y.Setup(ctx)
 	defer cleanup()
@@ -69,8 +72,10 @@ func run() error {
 		return err
 	}
 
-	a := api.New(br, sr, cr, rr, obs, cli.Auth0Domain, cli.Audience, cli.MetricsUsername, cli.MetricsPassword,
-		cli.StripePK,cli.StripeSK)
+	auth0Client := auth0.NewHTTPClient(cli.Auth0Domain)
+
+	a := api.New(br, sr, cr, rr, bkr, auth0Client, obs, cli.Auth0Domain, cli.Audience, cli.MetricsUsername, cli.MetricsPassword,
+		cli.StripePK, cli.StripeSK)
 
 	serv := http.Server{
 		Addr:    fmt.Sprintf(":%d", cli.Port),

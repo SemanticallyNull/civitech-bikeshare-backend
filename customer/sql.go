@@ -1,6 +1,7 @@
 package customer
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -72,3 +73,10 @@ func (r *Repository) CurrentRide(customerID uuid.UUID) (CurrentRideResult, error
 
 const getCurrentRideQuery = `SELECT b.label, r.started_at FROM rides r JOIN bikes b ON bike_id = b.id WHERE r.customer_id = $1
                                                              AND r.ended_at IS NULL`
+
+func (r *Repository) UpdateProfile(ctx context.Context, auth0ID, email, name string) error {
+	_, err := r.db.ExecContext(ctx, updateProfileQuery, email, name, auth0ID)
+	return err
+}
+
+const updateProfileQuery = `UPDATE customers SET email = NULLIF($1, ''), name = NULLIF($2, '') WHERE auth0_id = $3`

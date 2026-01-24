@@ -71,3 +71,46 @@ func (r *Repository) ReserveBike(ctx context.Context, id string) error {
 
 const reserveBike_checkAvailable = `SELECT available FROM bikes WHERE label = $1 FOR UPDATE`
 const reserveBike = `UPDATE bikes SET available = false WHERE label = $1`
+
+// BikeWithStation represents a bike with its station info for availability queries.
+type BikeWithStation struct {
+	Bike
+	StationName string `db:"station_name"`
+}
+
+// GetBikesWithStations fetches all bikes with their station info.
+func (r *Repository) GetBikesWithStations(ctx context.Context, stationID *string) ([]BikeWithStation, error) {
+	var bikes []BikeWithStation
+	var err error
+	if stationID != nil {
+		err = r.db.SelectContext(ctx, &bikes, getBikesWithStationsByStation, *stationID)
+	} else {
+		err = r.db.SelectContext(ctx, &bikes, getBikesWithStations)
+	}
+	return bikes, err
+}
+
+const getBikesWithStations = `
+SELECT b.*, COALESCE(s.name, '') as station_name
+FROM bikes b
+LEFT JOIN stations s ON b.station_id = s.id
+`
+
+const getBikesWithStationsByStation = `
+SELECT b.*, COALESCE(s.name, '') as station_name
+FROM bikes b
+LEFT JOIN stations s ON b.station_id = s.id
+WHERE b.station_id = $1
+`
+
+// GetBikeByID fetches a bike by its UUID.
+func (r *Repository) GetBikeByID(ctx context.Context, id string) (Bike, error) {
+	var bike Bike
+	err := r.db.GetContext(ctx, &bike, getBikeByID, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return bike, ErrNotFound
+	}
+	return bike, err
+}
+
+const getBikeByID = `SELECT * FROM bikes WHERE id = $1`
