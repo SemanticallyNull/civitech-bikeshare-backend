@@ -20,8 +20,8 @@ func TestGetAvailability_ReturnsAllBikesWithBookings(t *testing.T) {
 	endTime := time.Now().Add(26 * time.Hour).Format(time.RFC3339)
 	ts.CreateTestBooking(t, bikeID, "user-1", startTime, endTime, false)
 
-	// Make request
-	w := ts.GET("/availability", nil)
+	// Make request with auth header
+	w := ts.GET("/availability", map[string]string{"X-User-ID": "user-1"})
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
@@ -56,7 +56,7 @@ func TestGetAvailability_FilterByStationId(t *testing.T) {
 	ts.CreateTestBike(t, "BIKE-002", &station2ID)
 
 	// Request bikes only from station 1
-	w := ts.GET("/availability?stationId="+station1ID, nil)
+	w := ts.GET("/availability?stationId="+station1ID, map[string]string{"X-User-ID": "user-1"})
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
@@ -98,7 +98,7 @@ func TestGetAvailability_FilterByDateRange(t *testing.T) {
 	startDate := time.Now().Format(time.RFC3339)
 	endDate := time.Now().Add(48 * time.Hour).Format(time.RFC3339)
 
-	w := ts.GET("/availability?startDate="+startDate+"&endDate="+endDate, nil)
+	w := ts.GET("/availability?startDate="+startDate+"&endDate="+endDate, map[string]string{"X-User-ID": "user-1"})
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
@@ -132,8 +132,8 @@ func TestGetAvailability_ExcludesCancelledBookings(t *testing.T) {
 	endTime := time.Now().Add(26 * time.Hour).Format(time.RFC3339)
 	ts.CreateTestBooking(t, bikeID, "user-1", startTime, endTime, true) // cancelled = true
 
-	// Make request
-	w := ts.GET("/availability", nil)
+	// Make request with auth header
+	w := ts.GET("/availability", map[string]string{"X-User-ID": "user-1"})
 
 	if w.Code != http.StatusOK {
 		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
@@ -151,5 +151,93 @@ func TestGetAvailability_ExcludesCancelledBookings(t *testing.T) {
 	// Cancelled bookings should not appear
 	if len(resp[0].Bookings) != 0 {
 		t.Errorf("expected 0 bookings (cancelled should be excluded), got %d", len(resp[0].Bookings))
+	}
+}
+
+func TestGetAvailability_Returns401WithoutAuth(t *testing.T) {
+	ts := NewTestServer(t)
+	defer ts.Close()
+
+	// Make request without auth header
+	w := ts.GET("/availability", nil)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected status %d, got %d", http.StatusUnauthorized, w.Code)
+	}
+}
+
+func TestGetAvailability_ReturnsIsOwnBookingTrue(t *testing.T) {
+	ts := NewTestServer(t)
+	defer ts.Close()
+
+	// Create test data
+	stationID := ts.CreateTestStation(t, "Test Station")
+	bikeID := ts.CreateTestBike(t, "BIKE-001", &stationID)
+
+	// Create a booking as user-1
+	startTime := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	endTime := time.Now().Add(26 * time.Hour).Format(time.RFC3339)
+	ts.CreateTestBooking(t, bikeID, "user-1", startTime, endTime, false)
+
+	// Request as user-1 (same user who made the booking)
+	w := ts.GET("/availability", map[string]string{"X-User-ID": "user-1"})
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var resp []bikeAvailabilityResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 bike, got %d", len(resp))
+	}
+
+	if len(resp[0].Bookings) != 1 {
+		t.Fatalf("expected 1 booking, got %d", len(resp[0].Bookings))
+	}
+
+	if !resp[0].Bookings[0].IsOwnBooking {
+		t.Errorf("expected isOwnBooking to be true for user's own booking")
+	}
+}
+
+func TestGetAvailability_ReturnsIsOwnBookingFalse(t *testing.T) {
+	ts := NewTestServer(t)
+	defer ts.Close()
+
+	// Create test data
+	stationID := ts.CreateTestStation(t, "Test Station")
+	bikeID := ts.CreateTestBike(t, "BIKE-001", &stationID)
+
+	// Create a booking as user-1
+	startTime := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	endTime := time.Now().Add(26 * time.Hour).Format(time.RFC3339)
+	ts.CreateTestBooking(t, bikeID, "user-1", startTime, endTime, false)
+
+	// Request as user-2 (different user)
+	w := ts.GET("/availability", map[string]string{"X-User-ID": "user-2"})
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var resp []bikeAvailabilityResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 bike, got %d", len(resp))
+	}
+
+	if len(resp[0].Bookings) != 1 {
+		t.Fatalf("expected 1 booking, got %d", len(resp[0].Bookings))
+	}
+
+	if resp[0].Bookings[0].IsOwnBooking {
+		t.Errorf("expected isOwnBooking to be false for another user's booking")
 	}
 }

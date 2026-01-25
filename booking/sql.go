@@ -40,7 +40,7 @@ const getByIDQuery = `SELECT * FROM bookings WHERE id = $1`
 
 // GetByUserID fetches all bookings for a user, optionally filtered by status.
 // Results are sorted by start_time ASC.
-func (r *Repository) GetByUserID(ctx context.Context, userID string, status *BookingStatus) ([]Booking, error) {
+func (r *Repository) GetByUserID(ctx context.Context, userID uuid.UUID, status *BookingStatus) ([]Booking, error) {
 	var bookings []Booking
 	err := r.db.SelectContext(ctx, &bookings, getByUserIDQuery, userID)
 	if err != nil {
@@ -130,7 +130,7 @@ RETURNING *
 `
 
 // Cancel sets cancelled_at on a booking after verifying ownership and that it hasn't started.
-func (r *Repository) Cancel(ctx context.Context, id uuid.UUID, userID string) (Booking, error) {
+func (r *Repository) Cancel(ctx context.Context, id uuid.UUID, userID uuid.UUID) (Booking, error) {
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return Booking{}, err
@@ -199,13 +199,13 @@ func (r *Repository) GetBookingsForBike(ctx context.Context, bikeID uuid.UUID, s
 }
 
 const getBookingsForBikeQuery = `
-SELECT start_time, end_time FROM bookings
+SELECT start_time, end_time, user_id FROM bookings
 WHERE bike_id = $1 AND cancelled_at IS NULL
 ORDER BY start_time ASC
 `
 
 const getBookingsForBikeWithRangeQuery = `
-SELECT start_time, end_time FROM bookings
+SELECT start_time, end_time, user_id FROM bookings
 WHERE bike_id = $1
   AND cancelled_at IS NULL
   AND start_time < $3
@@ -214,7 +214,7 @@ ORDER BY start_time ASC
 `
 
 const getBookingsForBikeFromStartQuery = `
-SELECT start_time, end_time FROM bookings
+SELECT start_time, end_time, user_id FROM bookings
 WHERE bike_id = $1
   AND cancelled_at IS NULL
   AND end_time > $2
@@ -222,9 +222,33 @@ ORDER BY start_time ASC
 `
 
 const getBookingsForBikeToEndQuery = `
-SELECT start_time, end_time FROM bookings
+SELECT start_time, end_time, user_id FROM bookings
 WHERE bike_id = $1
   AND cancelled_at IS NULL
   AND start_time < $2
 ORDER BY start_time ASC
+`
+
+// GetNextBookingByOtherUser finds the next non-cancelled booking for a bike
+// by a different user after the specified time. Returns nil if no such booking exists.
+func (r *Repository) GetNextBookingByOtherUser(ctx context.Context, bikeLabel string, userID string, after time.Time) (*Booking, error) {
+	var b Booking
+	err := r.db.GetContext(ctx, &b, getNextBookingByOtherUserQuery, bikeLabel, userID, after)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+const getNextBookingByOtherUserQuery = `
+SELECT bk.* FROM bookings bk
+JOIN bikes ON bikes.label = $1
+WHERE user_id != $2
+  AND cancelled_at IS NULL
+  AND start_time > $3
+ORDER BY start_time ASC
+LIMIT 1
 `

@@ -8,8 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetUserID extracts the user ID (sub claim) from the JWT token in the Gin context
-func GetUserID(c *gin.Context) (string, bool) {
+// GetAuth0ID extracts the user ID (sub claim) from the JWT token in the Gin context
+func GetAuth0ID(c *gin.Context) (string, bool) {
 	// The JWT middleware stores the validated token in the request context
 	// under the key "user" by default
 	claims, exists := c.Request.Context().Value(jwtmiddleware.ContextKey{}).(*validator.ValidatedClaims)

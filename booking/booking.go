@@ -21,7 +21,7 @@ type Booking struct {
 	BikeID      uuid.UUID      `db:"bike_id"`
 	BikeLabel   string         `db:"bike_label"`
 	BikeName    sql.NullString `db:"bike_name"`
-	UserID      string         `db:"user_id"`
+	UserID      uuid.UUID      `db:"user_id"`
 	StartTime   time.Time      `db:"start_time"`
 	EndTime     time.Time      `db:"end_time"`
 	CancelledAt sql.NullTime   `db:"cancelled_at"`
@@ -52,4 +52,5 @@ func (b Booking) StatusAt(now time.Time) BookingStatus {
 type BookingTimeSlot struct {
 	StartTime time.Time `db:"start_time"`
 	EndTime   time.Time `db:"end_time"`
+	UserID    string    `db:"user_id"`
 }

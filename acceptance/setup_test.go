@@ -72,17 +72,17 @@ func NewTestServer(t *testing.T) *TestServer {
 }
 
 func (ts *TestServer) setupRoutes(br *bike.Repository, sr *station.Repository, cr *customer.Repository, rr *ride.Repository, bkr *booking.Repository) {
-	// Public route
-	ts.Router.GET("/availability", ts.makeAvailabilityHandler(br, bkr))
-
 	// Protected routes with fake auth
 	protected := ts.Router.Group("/")
 	protected.Use(fakeAuthMiddleware())
 	{
+		protected.GET("/availability", ts.makeAvailabilityHandler(br, bkr))
+		protected.GET("/bikes/:id/upcoming-booking-check", ts.makeUpcomingBookingCheckHandler(bkr, br))
 		protected.GET("/bookings", ts.makeGetBookingsHandler(bkr, br, sr))
 		protected.POST("/bookings", ts.makeCreateBookingHandler(bkr, br, sr))
 		protected.GET("/bookings/current", ts.makeGetCurrentBookingHandler(bkr, br, sr))
 		protected.POST("/bookings/:bookingId/cancel", ts.makeCancelBookingHandler(bkr, br, sr))
+		protected.POST("/ride/start", ts.makeStartRideHandler(bkr, br))
 	}
 }
 

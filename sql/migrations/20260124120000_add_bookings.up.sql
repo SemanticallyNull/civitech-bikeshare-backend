@@ -9,7 +9,5 @@ CREATE TABLE bookings (
     created_at   timestamp with time zone NOT NULL DEFAULT now()
 );
 
-ALTER TABLE bookings OWNER TO postgres;
-
 CREATE INDEX bookings_bike_id_idx ON bookings (bike_id);
 CREATE INDEX bookings_user_id_idx ON bookings (user_id);

@@ -571,3 +571,101 @@ func TestDerivedStatus_CancelledOverridesTime(t *testing.T) {
 		t.Errorf("expected status cancelled regardless of time, got %s", resp[0].Status)
 	}
 }
+
+// Test buffer conflict validation
+
+func TestCreateBooking_BufferConflict(t *testing.T) {
+	ts := NewTestServer(t)
+	defer ts.Close()
+
+	stationID := ts.CreateTestStation(t, "Test Station")
+	bikeID := ts.CreateTestBike(t, "BIKE-001", &stationID)
+
+	// Create an existing booking by user-1 starting in 3 hours
+	existingStart := time.Now().Add(3 * time.Hour)
+	existingEnd := existingStart.Add(2 * time.Hour)
+	ts.CreateTestBooking(t, bikeID, "user-1", existingStart.Format(time.RFC3339), existingEnd.Format(time.RFC3339), false)
+
+	// User-2 tries to create a booking ending 30 minutes before user-1's booking starts
+	// This is within the 1-hour buffer and should fail
+	newStart := time.Now().Add(1 * time.Hour)
+	newEnd := existingStart.Add(-30 * time.Minute) // Ends 30 minutes before existing booking starts
+
+	body := map[string]string{
+		"bikeId":    bikeID,
+		"startTime": newStart.Format(time.RFC3339),
+		"endTime":   newEnd.Format(time.RFC3339),
+	}
+
+	w := ts.POST("/bookings", body, map[string]string{"X-User-ID": "user-2"})
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected status %d, got %d: %s", http.StatusConflict, w.Code, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if resp["code"] != "BUFFER_CONFLICT" {
+		t.Errorf("expected code BUFFER_CONFLICT, got %s", resp["code"])
+	}
+}
+
+func TestCreateBooking_BufferConflict_AllowsOwnBooking(t *testing.T) {
+	ts := NewTestServer(t)
+	defer ts.Close()
+
+	stationID := ts.CreateTestStation(t, "Test Station")
+	bikeID := ts.CreateTestBike(t, "BIKE-001", &stationID)
+
+	// Create an existing booking by user-1 starting in 3 hours
+	existingStart := time.Now().Add(3 * time.Hour)
+	existingEnd := existingStart.Add(2 * time.Hour)
+	ts.CreateTestBooking(t, bikeID, "user-1", existingStart.Format(time.RFC3339), existingEnd.Format(time.RFC3339), false)
+
+	// User-1 (same user) tries to create a booking ending 30 minutes before their own booking starts
+	// This should be allowed since it's their own booking
+	newStart := time.Now().Add(1 * time.Hour)
+	newEnd := existingStart.Add(-30 * time.Minute) // Ends 30 minutes before existing booking starts
+
+	body := map[string]string{
+		"bikeId":    bikeID,
+		"startTime": newStart.Format(time.RFC3339),
+		"endTime":   newEnd.Format(time.RFC3339),
+	}
+
+	w := ts.POST("/bookings", body, map[string]string{"X-User-ID": "user-1"})
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+}
+
+func TestCreateBooking_BufferConflict_ExactlyOneHour(t *testing.T) {
+	ts := NewTestServer(t)
+	defer ts.Close()
+
+	stationID := ts.CreateTestStation(t, "Test Station")
+	bikeID := ts.CreateTestBike(t, "BIKE-001", &stationID)
+
+	// Create an existing booking by user-1 starting in 3 hours
+	existingStart := time.Now().Add(3 * time.Hour)
+	existingEnd := existingStart.Add(2 * time.Hour)
+	ts.CreateTestBooking(t, bikeID, "user-1", existingStart.Format(time.RFC3339), existingEnd.Format(time.RFC3339), false)
+
+	// User-2 creates a booking ending exactly 1 hour before user-1's booking starts
+	// This should be allowed (boundary case)
+	newStart := time.Now().Add(1 * time.Hour)
+	newEnd := existingStart.Add(-1 * time.Hour) // Ends exactly 1 hour before existing booking starts
+
+	body := map[string]string{
+		"bikeId":    bikeID,
+		"startTime": newStart.Format(time.RFC3339),
+		"endTime":   newEnd.Format(time.RFC3339),
+	}
+
+	w := ts.POST("/bookings", body, map[string]string{"X-User-ID": "user-2"})
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected status %d, got %d: %s", http.StatusCreated, w.Code, w.Body.String())
+	}
+}

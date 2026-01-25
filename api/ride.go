@@ -30,7 +30,7 @@ func (a *API) startRideHandler(c *gin.Context) {
 		return
 	}
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 	customer, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		logger.Error("Failed to get customer", "error", err)
@@ -42,6 +42,22 @@ func (a *API) startRideHandler(c *gin.Context) {
 	if err != nil {
 		logger.Error("Failed to get bike", "error", err)
 		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check for upcoming booking conflict: another user has a booking starting within 1 hour
+	now := time.Now()
+	nextBooking, err := a.bkr.GetNextBookingByOtherUser(c, req.BikeID, userID, now)
+	if err != nil {
+		logger.Error("Failed to check upcoming bookings", "error", err)
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	if nextBooking != nil && nextBooking.StartTime.Before(now.Add(time.Hour)) {
+		c.JSON(409, gin.H{
+			"code":    "UPCOMING_BOOKING_CONFLICT",
+			"message": "Cannot start ride: another user has a booking starting soon",
+		})
 		return
 	}
 
@@ -71,7 +87,7 @@ func (a *API) endRideHandler(c *gin.Context) {
 		return
 	}
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 	customer, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		logger.Error("Failed to get customer", "error", err)
@@ -168,7 +184,7 @@ func (a *API) currentRideHandler(c *gin.Context) {
 
 	logger := middleware.GetLogger(c)
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		if errors.Is(err, customer.ErrNotFound) {

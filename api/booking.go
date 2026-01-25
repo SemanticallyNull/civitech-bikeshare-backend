@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -38,7 +39,12 @@ type createBookingRequest struct {
 func (a *API) getBookingsHandler(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, ok := middleware.GetUserID(c)
+	userID, ok := middleware.GetAuth0ID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+		return
+	}
+	user, err := a.cr.GetCustomerByAuth0ID(userID)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
 		return
@@ -52,7 +58,7 @@ func (a *API) getBookingsHandler(c *gin.Context) {
 		statusPtr = &status
 	}
 
-	bookings, err := a.bkr.GetByUserID(c, userID, statusPtr)
+	bookings, err := a.bkr.GetByUserID(c, user.ID, statusPtr)
 	if err != nil {
 		logger.ErrorContext(c, "failed to get user bookings", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
@@ -76,7 +82,12 @@ func (a *API) getBookingsHandler(c *gin.Context) {
 func (a *API) createBookingHandler(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, ok := middleware.GetUserID(c)
+	userID, ok := middleware.GetAuth0ID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+		return
+	}
+	user, err := a.cr.GetCustomerByAuth0ID(userID)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
 		return
@@ -110,15 +121,12 @@ func (a *API) createBookingHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_DURATION", "message": "Booking duration cannot exceed 24 hours"})
 		return
 	}
+	fmt.Println(req)
 
 	// Verify bike exists
-	bikeID, err := uuid.Parse(req.BikeID)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_REQUEST", "message": "Invalid bikeId"})
-		return
-	}
+	bikeID := req.BikeID
 
-	_, err = a.br.GetBikeByID(c, req.BikeID)
+	bk, err := a.br.GetBike(c, req.BikeID)
 	if err != nil {
 		if errors.Is(err, bike.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"code": "BIKE_NOT_FOUND", "message": "Bike not found"})
@@ -129,11 +137,26 @@ func (a *API) createBookingHandler(c *gin.Context) {
 		return
 	}
 
+	// Check for buffer conflict: another user's booking within 1 hour of our end time
+	nextBooking, err := a.bkr.GetNextBookingByOtherUser(c, bikeID, userID, endTime)
+	if err != nil {
+		logger.ErrorContext(c, "failed to check for buffer conflict", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+	if nextBooking != nil && nextBooking.StartTime.Before(endTime.Add(time.Hour)) {
+		c.JSON(http.StatusConflict, gin.H{
+			"code":    "BUFFER_CONFLICT",
+			"message": "Another booking starts within 1 hour of your booking's end time",
+		})
+		return
+	}
+
 	// Create booking
 	b := &booking.Booking{
 		ID:        uuid.New(),
-		BikeID:    bikeID,
-		UserID:    userID,
+		BikeID:    bk.ID,
+		UserID:    user.ID,
 		StartTime: startTime,
 		EndTime:   endTime,
 	}
@@ -162,7 +185,7 @@ func (a *API) createBookingHandler(c *gin.Context) {
 func (a *API) getCurrentBookingHandler(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, ok := middleware.GetUserID(c)
+	userID, ok := middleware.GetAuth0ID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
 		return
@@ -193,8 +216,14 @@ func (a *API) getCurrentBookingHandler(c *gin.Context) {
 func (a *API) cancelBookingHandler(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, ok := middleware.GetUserID(c)
+	userID, ok := middleware.GetAuth0ID(c)
 	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+		return
+	}
+
+	customer, err := a.cr.GetCustomerByAuth0ID(userID)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
 		return
 	}
@@ -205,7 +234,7 @@ func (a *API) cancelBookingHandler(c *gin.Context) {
 		return
 	}
 
-	b, err := a.bkr.Cancel(c, bookingID, userID)
+	b, err := a.bkr.Cancel(c, bookingID, customer.ID)
 	if err != nil {
 		if errors.Is(err, booking.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"code": "BOOKING_NOT_FOUND", "message": "Booking not found"})
@@ -237,7 +266,7 @@ func (a *API) cancelBookingHandler(c *gin.Context) {
 // toBookingResponse converts a booking to an API response, fetching bike/station info.
 func (a *API) toBookingResponse(c *gin.Context, b booking.Booking) (bookingResponse, error) {
 	// Get bike info for the response
-	bikeInfo, err := a.br.GetBikeByID(c, b.BikeID.String())
+	bikeInfo, err := a.br.GetBike(c, b.BikeLabel)
 	if err != nil && !errors.Is(err, bike.ErrNotFound) {
 		return bookingResponse{}, err
 	}
@@ -265,7 +294,7 @@ func (a *API) toBookingResponse(c *gin.Context, b booking.Booking) (bookingRespo
 		BikeID:      b.BikeID,
 		BikeName:    b.BikeName.String,
 		BikeLabel:   b.BikeLabel,
-		UserID:      b.UserID,
+		UserID:      b.UserID.String(),
 		StationID:   stationID,
 		StationName: stationName,
 		StartTime:   b.StartTime,

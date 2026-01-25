@@ -22,7 +22,8 @@ type Bike struct {
 
 	Available bool
 
-	StationID *uuid.UUID `db:"station_id"`
+	StationID   *uuid.UUID `db:"station_id"`
+	StationName *string    `db:"station_name"`
 
 	// DisplayName is a user-friendly name for the bike type (e.g., "Bergamont Cargoville LJ")
 	DisplayName *string `db:"display_name"`

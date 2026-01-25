@@ -17,7 +17,7 @@ import (
 func (a *API) createCustomerSession(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 
 	// Fetch user profile from Auth0 (best effort)
 	var email, name string
@@ -110,7 +110,7 @@ func (a *API) createCustomerSession(c *gin.Context) {
 func (a *API) createSetupIntent(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		logger.Error("Cannot get customer", "error", err)
@@ -148,7 +148,7 @@ func (a *API) createSetupIntent(c *gin.Context) {
 
 func (a *API) preRide(c *gin.Context) {
 	logger := middleware.GetLogger(c)
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		if errors.Is(err, customer.ErrNotFound) {
@@ -191,7 +191,7 @@ type paymentMethodRequest struct {
 func (a *API) setPaymentMethod(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		logger.Error("Cannot get customer", "error", err)
@@ -241,7 +241,7 @@ type profileResponse struct {
 func (a *API) getProfile(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 	cust, err := a.cr.GetCustomerByAuth0ID(userID)
 	if err != nil {
 		if errors.Is(err, customer.ErrNotFound) {
@@ -262,7 +262,7 @@ func (a *API) getProfile(c *gin.Context) {
 func (a *API) updateProfile(c *gin.Context) {
 	logger := middleware.GetLogger(c)
 
-	userID, _ := middleware.GetUserID(c)
+	userID, _ := middleware.GetAuth0ID(c)
 
 	var req profileRequest
 	if err := c.Bind(&req); err != nil {

@@ -62,17 +62,17 @@ func New(br *bike.Repository, sr *station.Repository, cr *customer.Repository, r
 		authorized.GET("/metrics", gin.WrapH(promhttp.HandlerFor(o.Registry, promhttp.HandlerOpts{})))
 	}
 
-	// Public API routes (no auth required)
-	a.r.GET("/availability", a.availabilityHandler)
-
 	// Protected API routes (require JWT)
 	a.jwtValidator = middleware.NewJWTValidator(auth0Domain, audience)
 	protected := a.r.Group("/")
 	protected.Use(a.jwtValidator.EnsureValidToken())
+	protected.Use(func(c *gin.Context) {
+		c.Set("auth0_domain", auth0Domain)
+	})
 	{
-		protected.GET("/bikes/nearby", a.bikesHandler)
-		protected.GET("/bikes/:id", a.bikeHandler)
-		protected.GET("/bikes/:id/unlock", a.bikeUnlockHandler)
+		protected.GET("/availability", a.availabilityHandler)
+		protected.GET("/bikes/:label", a.bikeHandler)
+		protected.GET("/bikes/:label/upcoming-booking-check", a.upcomingBookingCheckHandler)
 		protected.GET("/stations", a.stationsHandler)
 		protected.GET("/stations/:id", a.stationHandler)
 		protected.GET("/stripe/pubkey", func(c *gin.Context) {

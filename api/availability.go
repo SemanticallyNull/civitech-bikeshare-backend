@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -21,12 +22,19 @@ type bikeAvailabilityResponse struct {
 }
 
 type bookingTimeSlotResponse struct {
-	StartTime time.Time `json:"startTime"`
-	EndTime   time.Time `json:"endTime"`
+	StartTime    time.Time `json:"startTime"`
+	EndTime      time.Time `json:"endTime"`
+	IsOwnBooking bool      `json:"isOwnBooking"`
 }
 
 func (a *API) availabilityHandler(c *gin.Context) {
 	logger := middleware.GetLogger(c)
+
+	userID, ok := middleware.GetAuth0ID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+		return
+	}
 
 	// Parse optional query params
 	stationID := c.Query("stationId")
@@ -38,22 +46,10 @@ func (a *API) availabilityHandler(c *gin.Context) {
 		stationIDPtr = &stationID
 	}
 
-	var startDate, endDate *time.Time
-	if startDateStr != "" {
-		t, err := time.Parse(time.RFC3339, startDateStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_DATE", "message": "Invalid startDate format"})
-			return
-		}
-		startDate = &t
-	}
-	if endDateStr != "" {
-		t, err := time.Parse(time.RFC3339, endDateStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_DATE", "message": "Invalid endDate format"})
-			return
-		}
-		endDate = &t
+	startDate, endDate, err := parseDate(c, startDateStr, endDateStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_DATE", "message": err})
+		return
 	}
 
 	// Fetch bikes with station info
@@ -78,8 +74,9 @@ func (a *API) availabilityHandler(c *gin.Context) {
 		bookings := make([]bookingTimeSlotResponse, 0, len(slots))
 		for _, slot := range slots {
 			bookings = append(bookings, bookingTimeSlotResponse{
-				StartTime: slot.StartTime,
-				EndTime:   slot.EndTime,
+				StartTime:    slot.StartTime,
+				EndTime:      slot.EndTime,
+				IsOwnBooking: slot.UserID == userID,
 			})
 		}
 
@@ -95,4 +92,23 @@ func (a *API) availabilityHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, availability)
+}
+
+func parseDate(c *gin.Context, startDateStr string, endDateStr string) (*time.Time, *time.Time, error) {
+	var startDate, endDate *time.Time
+	if startDateStr != "" {
+		t, err := time.Parse(time.RFC3339, startDateStr)
+		if err != nil {
+			return nil, nil, errors.New("invalid startDate format")
+		}
+		startDate = &t
+	}
+	if endDateStr != "" {
+		t, err := time.Parse(time.RFC3339, endDateStr)
+		if err != nil {
+			return nil, nil, errors.New("invalid endDate format")
+		}
+		endDate = &t
+	}
+	return startDate, endDate, nil
 }

@@ -24,8 +24,9 @@ type bikeAvailabilityResponse struct {
 }
 
 type bookingTimeSlotResponse struct {
-	StartTime time.Time `json:"startTime"`
-	EndTime   time.Time `json:"endTime"`
+	StartTime    time.Time `json:"startTime"`
+	EndTime      time.Time `json:"endTime"`
+	IsOwnBooking bool      `json:"isOwnBooking"`
 }
 
 type bookingResponse struct {
@@ -50,6 +51,12 @@ type createBookingRequest struct {
 
 func (ts *TestServer) makeAvailabilityHandler(br *bike.Repository, bkr *booking.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+			return
+		}
+
 		stationID := c.Query("stationId")
 		startDateStr := c.Query("startDate")
 		endDateStr := c.Query("endDate")
@@ -94,8 +101,9 @@ func (ts *TestServer) makeAvailabilityHandler(br *bike.Repository, bkr *booking.
 			bookings := make([]bookingTimeSlotResponse, 0, len(slots))
 			for _, slot := range slots {
 				bookings = append(bookings, bookingTimeSlotResponse{
-					StartTime: slot.StartTime,
-					EndTime:   slot.EndTime,
+					StartTime:    slot.StartTime,
+					EndTime:      slot.EndTime,
+					IsOwnBooking: slot.UserID == userID,
 				})
 			}
 
@@ -134,10 +142,29 @@ func (ts *TestServer) makeGetBookingsHandler(bkr *booking.Repository, br *bike.R
 			statusPtr = &status
 		}
 
-		bookings, err := bkr.GetByUserID(c, userID, statusPtr)
+		// Query bookings directly by string user_id for testing
+		var bookings []booking.Booking
+		err := ts.DB.SelectContext(c, &bookings, `
+			SELECT bk.*, bikes.label as bike_label, bikes.display_name as bike_name
+			FROM bookings bk
+			JOIN bikes ON bk.bike_id = bikes.id
+			WHERE user_id = $1
+			ORDER BY start_time ASC`, userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
+		}
+
+		// Filter by status in Go if specified
+		if statusPtr != nil {
+			now := time.Now()
+			filtered := make([]booking.Booking, 0, len(bookings))
+			for _, b := range bookings {
+				if b.StatusAt(now) == *statusPtr {
+					filtered = append(filtered, b)
+				}
+			}
+			bookings = filtered
 		}
 
 		responses := make([]bookingResponse, 0, len(bookings))
@@ -198,6 +225,20 @@ func (ts *TestServer) makeCreateBookingHandler(bkr *booking.Repository, br *bike
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Check for buffer conflict: another user's booking within 1 hour of our end time
+		nextBooking, err := bkr.GetNextBookingByOtherUser(c, bikeID, userID, endTime)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+		if nextBooking != nil && nextBooking.StartTime.Before(endTime.Add(time.Hour)) {
+			c.JSON(http.StatusConflict, gin.H{
+				"code":    "BUFFER_CONFLICT",
+				"message": "Another booking starts within 1 hour of your booking's end time",
+			})
 			return
 		}
 
@@ -328,3 +369,106 @@ func toBookingResponse(c *gin.Context, b booking.Booking, br *bike.Repository, s
 }
 
 var _ = sql.NullInt32{}
+
+// Response types for new handlers
+type upcomingBookingCheckResponse struct {
+	HasUpcomingBooking      bool       `json:"hasUpcomingBooking"`
+	NextBookingStart        *time.Time `json:"nextBookingStart,omitempty"`
+	MinutesUntilNextBooking *int       `json:"minutesUntilNextBooking,omitempty"`
+}
+
+type rideRequest struct {
+	BikeID string `json:"bikeId"`
+}
+
+func (ts *TestServer) makeStartRideHandler(bkr *booking.Repository, br *bike.Repository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+			return
+		}
+
+		var req rideRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_REQUEST", "message": err.Error()})
+			return
+		}
+
+		bikeInfo, err := br.GetBikeByID(c, req.BikeID)
+		if err != nil {
+			if errors.Is(err, bike.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"code": "BIKE_NOT_FOUND", "message": "Bike not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Check for upcoming booking conflict: another user has a booking starting within 1 hour
+		now := time.Now()
+		nextBooking, err := bkr.GetNextBookingByOtherUser(c, bikeInfo.ID, userID, now)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+		if nextBooking != nil && nextBooking.StartTime.Before(now.Add(time.Hour)) {
+			c.JSON(http.StatusConflict, gin.H{
+				"code":    "UPCOMING_BOOKING_CONFLICT",
+				"message": "Cannot start ride: another user has a booking starting soon",
+			})
+			return
+		}
+
+		// For testing, we just return success
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}
+
+func (ts *TestServer) makeUpcomingBookingCheckHandler(bkr *booking.Repository, br *bike.Repository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, ok := getUserID(c)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
+			return
+		}
+
+		bikeID, err := uuid.Parse(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_REQUEST", "message": "Invalid bike ID"})
+			return
+		}
+
+		// Verify bike exists
+		_, err = br.GetBikeByID(c, bikeID.String())
+		if err != nil {
+			if errors.Is(err, bike.ErrNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"code": "BIKE_NOT_FOUND", "message": "Bike not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		// Check for upcoming booking by another user
+		now := time.Now()
+		nextBooking, err := bkr.GetNextBookingByOtherUser(c, bikeID, userID, now)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		resp := upcomingBookingCheckResponse{
+			HasUpcomingBooking: false,
+		}
+
+		if nextBooking != nil && nextBooking.StartTime.Before(now.Add(time.Hour)) {
+			resp.HasUpcomingBooking = true
+			resp.NextBookingStart = &nextBooking.StartTime
+			minutes := int(nextBooking.StartTime.Sub(now).Minutes())
+			resp.MinutesUntilNextBooking = &minutes
+		}
+
+		c.JSON(http.StatusOK, resp)
+	}
+}

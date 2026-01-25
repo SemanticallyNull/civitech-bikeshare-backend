@@ -8,9 +8,6 @@ create table bikes
     location point not null
 );
 
-alter table bikes
-    owner to postgres;
-
 create unique index bikes_label
     on bikes (label);
 
@@ -26,9 +23,6 @@ create table stations
     type          text  not null
 );
 
-alter table stations
-    owner to postgres;
-
 create table customers
 (
     id         uuid                                   not null
@@ -42,9 +36,6 @@ create table customers
             unique,
     created_at timestamp with time zone default now() not null
 );
-
-alter table customers
-    owner to postgres;
 
 create table rides
 (
@@ -60,7 +51,4 @@ create table rides
         constraint rides_pk_2
             unique
 );
-
-alter table rides
-    owner to postgres;
 

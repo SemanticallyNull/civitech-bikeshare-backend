@@ -29,10 +29,10 @@ func (r *Repository) GetBikes(ctx context.Context) ([]Bike, error) {
 
 const getBikes = `SELECT * FROM bikes`
 
-func (r *Repository) GetBike(ctx context.Context, id string) (Bike, error) {
+func (r *Repository) GetBike(ctx context.Context, label string) (Bike, error) {
 	var bike Bike
 
-	err := r.db.GetContext(ctx, &bike, getBike, id)
+	err := r.db.GetContext(ctx, &bike, getBike, label)
 	if errors.Is(err, sql.ErrNoRows) {
 		return bike, ErrNotFound
 	}
@@ -40,37 +40,11 @@ func (r *Repository) GetBike(ctx context.Context, id string) (Bike, error) {
 	return bike, err
 }
 
-const getBike = `SELECT * FROM bikes WHERE label = $1`
-
-func (r *Repository) ReserveBike(ctx context.Context, id string) error {
-	tx, err := r.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	var available bool
-	err = tx.GetContext(ctx, &available, reserveBike_checkAvailable, id)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return err
-	}
-	if !available {
-		return ErrNotAvailable
-	}
-
-	_, err = tx.Exec(reserveBike, id)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}
-
-const reserveBike_checkAvailable = `SELECT available FROM bikes WHERE label = $1 FOR UPDATE`
-const reserveBike = `UPDATE bikes SET available = false WHERE label = $1`
+const getBike = `SELECT b.*, COALESCE((bk.start_time >= NOW() AND bk.end_time <= NOW()), true) AS available, s.name as station_name
+					FROM bikes b
+					LEFT OUTER JOIN bookings bk ON b.id = bk.bike_id
+					LEFT OUTER JOIN stations s ON b.station_id = s.id
+					WHERE b.label = $1`
 
 // BikeWithStation represents a bike with its station info for availability queries.
 type BikeWithStation struct {
@@ -102,15 +76,3 @@ FROM bikes b
 LEFT JOIN stations s ON b.station_id = s.id
 WHERE b.station_id = $1
 `
-
-// GetBikeByID fetches a bike by its UUID.
-func (r *Repository) GetBikeByID(ctx context.Context, id string) (Bike, error) {
-	var bike Bike
-	err := r.db.GetContext(ctx, &bike, getBikeByID, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return bike, ErrNotFound
-	}
-	return bike, err
-}
-
-const getBikeByID = `SELECT * FROM bikes WHERE id = $1`
