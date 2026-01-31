@@ -46,7 +46,7 @@ func (a *API) availabilityHandler(c *gin.Context) {
 		stationIDPtr = &stationID
 	}
 
-	startDate, endDate, err := parseDate(c, startDateStr, endDateStr)
+	startDate, endDate, err := parseDate(startDateStr, endDateStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_DATE", "message": err})
 		return
@@ -94,7 +94,7 @@ func (a *API) availabilityHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, availability)
 }
 
-func parseDate(c *gin.Context, startDateStr string, endDateStr string) (*time.Time, *time.Time, error) {
+func parseDate(startDateStr string, endDateStr string) (*time.Time, *time.Time, error) {
 	var startDate, endDate *time.Time
 	if startDateStr != "" {
 		t, err := time.Parse(time.RFC3339, startDateStr)
