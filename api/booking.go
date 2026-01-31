@@ -32,6 +32,7 @@ type bookingResponse struct {
 
 type createBookingRequest struct {
 	BikeID    string `json:"bikeId" binding:"required"`
+	Label     string `json:"bikeName" binding:"required"`
 	StartTime string `json:"startTime" binding:"required"`
 	EndTime   string `json:"endTime" binding:"required"`
 }
@@ -88,13 +89,14 @@ func (a *API) createBookingHandler(c *gin.Context) {
 		return
 	}
 	user, err := a.cr.GetCustomerByAuth0ID(userID)
-	if !ok {
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"code": "UNAUTHORIZED", "message": "Authentication required"})
 		return
 	}
 
 	var req createBookingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.ErrorContext(c, "failed to bind request", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_REQUEST", "message": err.Error()})
 		return
 	}
@@ -102,31 +104,35 @@ func (a *API) createBookingHandler(c *gin.Context) {
 	// Parse times
 	startTime, err := time.Parse(time.RFC3339, req.StartTime)
 	if err != nil {
+		logger.ErrorContext(c, "bad start time", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_REQUEST", "message": "Invalid startTime format"})
 		return
 	}
 	endTime, err := time.Parse(time.RFC3339, req.EndTime)
 	if err != nil {
+		logger.ErrorContext(c, "bad end time", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_REQUEST", "message": "Invalid endTime format"})
 		return
 	}
 
-	// Validate duration (1-24 hours)
+	// Validate duration (15 mins - 72 hours)
 	duration := endTime.Sub(startTime)
-	if duration < time.Hour {
+	if duration < 15*time.Minute {
+		logger.ErrorContext(c, "bad duration", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_DURATION", "message": "Booking duration must be at least 1 hour"})
 		return
 	}
-	if duration > 24*time.Hour {
+	if duration > 72*time.Hour {
+		logger.ErrorContext(c, "bad duration", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"code": "INVALID_DURATION", "message": "Booking duration cannot exceed 24 hours"})
 		return
 	}
 	fmt.Println(req)
 
 	// Verify bike exists
-	bikeID := req.BikeID
+	bikeID := req.Label
 
-	bk, err := a.br.GetBike(c, req.BikeID)
+	bk, err := a.br.GetBike(c, bikeID)
 	if err != nil {
 		if errors.Is(err, bike.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"code": "BIKE_NOT_FOUND", "message": "Bike not found"})
